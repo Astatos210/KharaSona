@@ -1,0 +1,48 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    # Linux, because that is what deploy hosts run. A Windows-only build can pass
+    # locally while the deploy host fails on file modes or platform binaries.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Guard against committed dependencies
+        run: |
+          if git ls-files --error-unmatch node_modules >/dev/null 2>&1; then
+            echo "::error::node_modules/ is tracked in git. Remove it with: git rm -r --cached node_modules"
+            exit 1
+          fi
+          if git ls-files --error-unmatch dist >/dev/null 2>&1; then
+            echo "::error::dist/ is tracked in git. Remove it with: git rm -r --cached dist"
+            exit 1
+          fi
+          echo "No dependency or build-output directories are tracked."
+
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify build output
+        run: |
+          test -f dist/index.html
+          test -d dist/assets
+          echo "Build output verified:"
+          ls -la dist dist/assets
